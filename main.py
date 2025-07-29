@@ -94,7 +94,20 @@ def event_details(event_id):
 
     conn.close()
 
-    return render_template('event_details.html', event=event, rsvps=rsvps)
+    # Convert event to dict and parse datetime strings
+    event_dict = dict(event)
+    event_dict['schedule'] = datetime.fromisoformat(event_dict['schedule'])
+    event_dict['creation_date'] = datetime.fromisoformat(event_dict['creation_date'])
+
+    # Convert rsvps to list of dicts and parse datetime strings
+    rsvps_list = []
+    for rsvp in rsvps:
+        rsvp_dict = dict(rsvp)
+        if rsvp_dict['response_date']:
+            rsvp_dict['response_date'] = datetime.fromisoformat(rsvp_dict['response_date'])
+        rsvps_list.append(rsvp_dict)
+
+    return render_template('event_details.html', event=event_dict, rsvps=rsvps_list)
 
 @app.route('/invite/<int:event_id>', methods=['GET', 'POST'])
 def invite_people(event_id):
@@ -134,7 +147,11 @@ def invite_people(event_id):
         flash('Event not found', 'error')
         return redirect(url_for('index'))
 
-    return render_template('invite.html', event=event)
+    # Convert event to dict and parse datetime
+    event_dict = dict(event)
+    event_dict['schedule'] = datetime.fromisoformat(event_dict['schedule'])
+
+    return render_template('invite.html', event=event_dict)
 
 @app.route('/rsvp/<invite_token>')
 def rsvp_form(invite_token):
@@ -146,7 +163,7 @@ def rsvp_form(invite_token):
     conn = get_db_connection()
 
     result = conn.execute('''
-        SELECT e.*, r.id as rsvp_id, r.invitee_name, r.status
+        SELECT e.*, r.id as rsvp_id, r.invitee_name, r.status, r.message
         FROM events e
         JOIN rsvps r ON e.id = r.event_id
         WHERE r.invite_token = ? AND r.invitee_email = ?
@@ -158,7 +175,11 @@ def rsvp_form(invite_token):
         flash('Invalid invitation', 'error')
         return redirect(url_for('index'))
 
-    return render_template('rsvp.html', event=result, email=email)
+    # Convert result to dict and parse datetime
+    event_dict = dict(result)
+    event_dict['schedule'] = datetime.fromisoformat(event_dict['schedule'])
+
+    return render_template('rsvp.html', event=event_dict, email=email)
 
 @app.route('/submit_rsvp/<invite_token>', methods=['POST'])
 def submit_rsvp(invite_token):
@@ -188,7 +209,15 @@ def list_events():
 
     conn.close()
 
-    return render_template('events_list.html', events=events)
+    # Convert events to list of dicts and parse datetime strings
+    events_list = []
+    for event in events:
+        event_dict = dict(event)
+        event_dict['schedule'] = datetime.fromisoformat(event_dict['schedule'])
+        event_dict['creation_date'] = datetime.fromisoformat(event_dict['creation_date'])
+        events_list.append(event_dict)
+
+    return render_template('events_list.html', events=events_list)
 
 if __name__ == '__main__':
     init_db()
