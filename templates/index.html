@@ -1,0 +1,40 @@
+
+{% extends "base.html" %}
+
+{% block title %}Event Manager - Home{% endblock %}
+
+{% block content %}
+<h1>Welcome to Event Manager</h1>
+<p>Create events and manage RSVPs with ease!</p>
+
+<div style="margin-top: 30px;">
+    <h2>Quick Actions</h2>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px;">
+        <div class="event-card">
+            <h3>Create New Event</h3>
+            <p>Set up a new event and start inviting people.</p>
+            <a href="{{ url_for('create_event') }}">
+                <button>Create Event</button>
+            </a>
+        </div>
+        
+        <div class="event-card">
+            <h3>View All Events</h3>
+            <p>See all your created events and their RSVPs.</p>
+            <a href="{{ url_for('list_events') }}">
+                <button>View Events</button>
+            </a>
+        </div>
+    </div>
+</div>
+
+<div style="margin-top: 30px;">
+    <h2>How It Works</h2>
+    <ol>
+        <li>Create an event with details like name, date, time, and location</li>
+        <li>Add invitees by providing their name and email</li>
+        <li>Share the generated personal RSVP URL with each invitee</li>
+        <li>Track responses as people RSVP to your event</li>
+    </ol>
+</div>
+{% endblock %}

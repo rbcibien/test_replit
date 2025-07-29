@@ -1,0 +1,51 @@
+
+{% extends "base.html" %}
+
+{% block title %}{{ event.name }} - Event Details{% endblock %}
+
+{% block content %}
+<h1>{{ event.name }}</h1>
+
+<div class="event-card">
+    <p><strong>Description:</strong> {{ event.description or 'No description provided' }}</p>
+    <p><strong>Date & Time:</strong> {{ event.schedule.strftime('%B %d, %Y at %I:%M %p') }}</p>
+    <p><strong>Location:</strong> {{ event.location }}</p>
+    <p><strong>Created by:</strong> {{ event.creator }}</p>
+    <p><strong>Created on:</strong> {{ event.creation_date.strftime('%B %d, %Y') }}</p>
+</div>
+
+<div style="margin: 20px 0;">
+    <a href="{{ url_for('invite_people', event_id=event.id) }}">
+        <button>Invite People</button>
+    </a>
+</div>
+
+<h2>RSVPs ({{ rsvps|length }} responses)</h2>
+
+{% if rsvps %}
+    <div>
+        {% for rsvp in rsvps %}
+            <div class="event-card">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <strong>{{ rsvp.invitee_name }}</strong> ({{ rsvp.invitee_email }})
+                    </div>
+                    <span class="rsvp-status status-{{ rsvp.status.replace(' ', '-') }}">
+                        {{ rsvp.status.title() }}
+                    </span>
+                </div>
+                {% if rsvp.message %}
+                    <p style="margin-top: 10px; font-style: italic;">"{{ rsvp.message }}"</p>
+                {% endif %}
+                {% if rsvp.response_date %}
+                    <p style="margin-top: 5px; font-size: 12px; color: #666;">
+                        Responded on {{ rsvp.response_date.strftime('%B %d, %Y at %I:%M %p') }}
+                    </p>
+                {% endif %}
+            </div>
+        {% endfor %}
+    </div>
+{% else %}
+    <p>No RSVPs yet. Start inviting people!</p>
+{% endif %}
+{% endblock %}
