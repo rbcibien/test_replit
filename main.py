@@ -1,54 +1,49 @@
-
 import os
-import psycopg2
+import sqlite3
 from flask import Flask, request, render_template, redirect, url_for, flash, jsonify
 from datetime import datetime
 import uuid
-from psycopg2.extras import RealDictCursor
 
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-change-this'
 
 def get_db_connection():
-    database_url = os.environ.get('DATABASE_URL')
-    if not database_url:
-        raise Exception("DATABASE_URL environment variable not set")
-    return psycopg2.connect(database_url)
+    conn = sqlite3.connect('events.db')
+    conn.row_factory = sqlite3.Row
+    return conn
 
 def init_db():
     conn = get_db_connection()
-    cur = conn.cursor()
-    
+
     # Create events table
-    cur.execute('''
+    conn.execute('''
         CREATE TABLE IF NOT EXISTS events (
-            id SERIAL PRIMARY KEY,
-            name VARCHAR(255) NOT NULL,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
             description TEXT,
-            schedule TIMESTAMP NOT NULL,
-            location VARCHAR(255) NOT NULL,
-            creator VARCHAR(255) NOT NULL,
-            creation_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            invite_token VARCHAR(255) UNIQUE NOT NULL
+            schedule TEXT NOT NULL,
+            location TEXT NOT NULL,
+            creator TEXT NOT NULL,
+            creation_date TEXT DEFAULT CURRENT_TIMESTAMP,
+            invite_token TEXT UNIQUE NOT NULL
         )
     ''')
-    
+
     # Create RSVPs table
-    cur.execute('''
+    conn.execute('''
         CREATE TABLE IF NOT EXISTS rsvps (
-            id SERIAL PRIMARY KEY,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             event_id INTEGER REFERENCES events(id) ON DELETE CASCADE,
-            invitee_name VARCHAR(255) NOT NULL,
-            invitee_email VARCHAR(255) NOT NULL,
-            status VARCHAR(20) DEFAULT 'pending',
-            response_date TIMESTAMP,
+            invitee_name TEXT NOT NULL,
+            invitee_email TEXT NOT NULL,
+            status TEXT DEFAULT 'pending',
+            response_date TEXT,
             message TEXT,
-            invite_token VARCHAR(255) NOT NULL
+            invite_token TEXT NOT NULL
         )
     ''')
-    
+
     conn.commit()
-    cur.close()
     conn.close()
 
 @app.route('/')
@@ -63,47 +58,42 @@ def create_event():
         schedule = request.form['schedule']
         location = request.form['location']
         creator = request.form['creator']
-        
+
         invite_token = str(uuid.uuid4())
-        
+
         conn = get_db_connection()
-        cur = conn.cursor()
-        
-        cur.execute('''
+
+        cursor = conn.execute('''
             INSERT INTO events (name, description, schedule, location, creator, invite_token)
-            VALUES (%s, %s, %s, %s, %s, %s) RETURNING id
+            VALUES (?, ?, ?, ?, ?, ?)
         ''', (name, description, schedule, location, creator, invite_token))
-        
-        event_id = cur.fetchone()[0]
+
+        event_id = cursor.lastrowid
         conn.commit()
-        cur.close()
         conn.close()
-        
+
         flash(f'Event created successfully! Event ID: {event_id}', 'success')
         return redirect(url_for('event_details', event_id=event_id))
-    
+
     return render_template('create_event.html')
 
 @app.route('/event/<int:event_id>')
 def event_details(event_id):
     conn = get_db_connection()
-    cur = conn.cursor(cursor_factory=RealDictCursor)
-    
-    cur.execute('SELECT * FROM events WHERE id = %s', (event_id,))
-    event = cur.fetchone()
-    
+
+    event = conn.execute('SELECT * FROM events WHERE id = ?', (event_id,)).fetchone()
+
     if not event:
         flash('Event not found', 'error')
+        conn.close()
         return redirect(url_for('index'))
-    
-    cur.execute('''
-        SELECT * FROM rsvps WHERE event_id = %s ORDER BY response_date DESC
-    ''', (event_id,))
-    rsvps = cur.fetchall()
-    
-    cur.close()
+
+    rsvps = conn.execute('''
+        SELECT * FROM rsvps WHERE event_id = ? ORDER BY response_date DESC
+    ''', (event_id,)).fetchall()
+
     conn.close()
-    
+
     return render_template('event_details.html', event=event, rsvps=rsvps)
 
 @app.route('/invite/<int:event_id>', methods=['GET', 'POST'])
@@ -111,44 +101,39 @@ def invite_people(event_id):
     if request.method == 'POST':
         invitee_name = request.form['invitee_name']
         invitee_email = request.form['invitee_email']
-        
+
         conn = get_db_connection()
-        cur = conn.cursor()
-        
+
         # Get event invite token
-        cur.execute('SELECT invite_token FROM events WHERE id = %s', (event_id,))
-        result = cur.fetchone()
+        result = conn.execute('SELECT invite_token FROM events WHERE id = ?', (event_id,)).fetchone()
         if not result:
             flash('Event not found', 'error')
+            conn.close()
             return redirect(url_for('index'))
-        
-        invite_token = result[0]
-        
-        cur.execute('''
+
+        invite_token = result['invite_token']
+
+        conn.execute('''
             INSERT INTO rsvps (event_id, invitee_name, invitee_email, invite_token)
-            VALUES (%s, %s, %s, %s)
+            VALUES (?, ?, ?, ?)
         ''', (event_id, invitee_name, invitee_email, invite_token))
-        
+
         conn.commit()
-        cur.close()
         conn.close()
-        
+
         invite_url = request.url_root + f'rsvp/{invite_token}?email={invitee_email}'
         flash(f'Invitation created! Send this URL: {invite_url}', 'success')
-        
+
         return redirect(url_for('event_details', event_id=event_id))
-    
+
     conn = get_db_connection()
-    cur = conn.cursor(cursor_factory=RealDictCursor)
-    cur.execute('SELECT * FROM events WHERE id = %s', (event_id,))
-    event = cur.fetchone()
-    cur.close()
+    event = conn.execute('SELECT * FROM events WHERE id = ?', (event_id,)).fetchone()
     conn.close()
-    
+
     if not event:
         flash('Event not found', 'error')
         return redirect(url_for('index'))
-    
+
     return render_template('invite.html', event=event)
 
 @app.route('/rsvp/<invite_token>')
@@ -157,25 +142,22 @@ def rsvp_form(invite_token):
     if not email:
         flash('Invalid invitation link', 'error')
         return redirect(url_for('index'))
-    
+
     conn = get_db_connection()
-    cur = conn.cursor(cursor_factory=RealDictCursor)
-    
-    cur.execute('''
+
+    result = conn.execute('''
         SELECT e.*, r.id as rsvp_id, r.invitee_name, r.status
         FROM events e
         JOIN rsvps r ON e.id = r.event_id
-        WHERE r.invite_token = %s AND r.invitee_email = %s
-    ''', (invite_token, email))
-    
-    result = cur.fetchone()
-    cur.close()
+        WHERE r.invite_token = ? AND r.invitee_email = ?
+    ''', (invite_token, email)).fetchone()
+
     conn.close()
-    
+
     if not result:
         flash('Invalid invitation', 'error')
         return redirect(url_for('index'))
-    
+
     return render_template('rsvp.html', event=result, email=email)
 
 @app.route('/submit_rsvp/<invite_token>', methods=['POST'])
@@ -183,34 +165,29 @@ def submit_rsvp(invite_token):
     email = request.form['email']
     status = request.form['status']
     message = request.form.get('message', '')
-    
+
     conn = get_db_connection()
-    cur = conn.cursor()
-    
-    cur.execute('''
+
+    conn.execute('''
         UPDATE rsvps 
-        SET status = %s, message = %s, response_date = CURRENT_TIMESTAMP
-        WHERE invite_token = %s AND invitee_email = %s
+        SET status = ?, message = ?, response_date = datetime('now')
+        WHERE invite_token = ? AND invitee_email = ?
     ''', (status, message, invite_token, email))
-    
+
     conn.commit()
-    cur.close()
     conn.close()
-    
+
     flash('RSVP submitted successfully!', 'success')
     return render_template('rsvp_success.html')
 
 @app.route('/events')
 def list_events():
     conn = get_db_connection()
-    cur = conn.cursor(cursor_factory=RealDictCursor)
-    
-    cur.execute('SELECT * FROM events ORDER BY creation_date DESC')
-    events = cur.fetchall()
-    
-    cur.close()
+
+    events = conn.execute('SELECT * FROM events ORDER BY creation_date DESC').fetchall()
+
     conn.close()
-    
+
     return render_template('events_list.html', events=events)
 
 if __name__ == '__main__':
